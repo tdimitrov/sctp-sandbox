@@ -1,5 +1,31 @@
 #include "common.h"
 
+int initmsg(int socket)
+{
+      struct sctp_initmsg initmsg;
+      memset(&initmsg, 0, sizeof(initmsg));
+      socklen_t initmsg_len = sizeof(struct sctp_initmsg);
+      if(getsockopt(socket, SOL_SCTP, SCTP_INITMSG, &initmsg, &initmsg_len) == -1) {
+            perror("getsockopt sctp_initmsg");
+            return 1;
+      }
+
+      printf("sctp_initmsg.max_attempts: %d\n", initmsg.sinit_max_attempts);
+      printf("sctp_initmsg.max_inittimeo: %d\n", initmsg.sinit_max_init_timeo);
+      printf("sctp_initmsg.max_instreams: %d\n", initmsg.sinit_max_instreams);
+      printf("sctp_initmsg.num_ostreams: %d\n", initmsg.sinit_num_ostreams);
+
+
+      initmsg.sinit_num_ostreams = 8;
+      initmsg.sinit_max_instreams = 8;
+      if(setsockopt(socket, SOL_SCTP, SCTP_INITMSG, &initmsg, sizeof(initmsg)) == -1) {
+            perror("setsockopt sctp_initmsg");
+            return 2;
+      }
+
+      return 0;
+}
+
 
 int main()
 {
