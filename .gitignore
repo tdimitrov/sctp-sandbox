@@ -1,0 +1,8 @@
+CMakeLists.txt.user
+build/
+sctp_sandbox.config
+sctp_sandbox.creator
+sctp_sandbox.creator.user
+sctp_sandbox.files
+sctp_sandbox.includes
+*.swp
