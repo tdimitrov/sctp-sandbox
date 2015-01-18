@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>		//for close()
+#include <stdlib.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/sctp.h>
@@ -8,7 +9,6 @@
 
 
 const int SERVER_PORT = 4444;
-const char* SERVER_IP = "127.0.0.1";
 const int ADDR_FAMILY = AF_INET;
 const int SOCK_TYPE = SOCK_STREAM;
 const int PROTO = IPPROTO_SCTP;
