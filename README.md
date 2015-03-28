@@ -1,5 +1,7 @@
 # sctp-sandbox
-This project contains a very simple SCTP client/server application, used for testing purposes. It is written mainly in C. I use it to generate some traffic over an SCTP association.
+This project contains a very simple SCTP client/server application, used for testing purposes. I use it to generate some traffic over an SCTP association.
+
+You need libsctp-dev (for debian) or lksctp-tools-devel (for redhat) installed in order to build the source.
 
 WARNING!!!
 
