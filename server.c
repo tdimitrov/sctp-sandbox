@@ -1,10 +1,12 @@
 #include "common.h"
-#include <thread>
+#include <pthread.h>
 
-//TODO: install libsctp-dev
-//man 7 ip - ip address structs
+typedef struct _client_data {
+    int socket_fd;
+    struct sockaddr addr;
+} client_data_t;
 
-void handle_connection(int conn_fd, struct sockaddr addr);
+void *handle_connection(void *thread_data);
 
 int main(int argc, char* argv[])
 {
@@ -47,33 +49,67 @@ int main(int argc, char* argv[])
     printf("Listening on port %d\n", server_port);
 
     while(1) {
-        struct sockaddr client_addr;
-        memset(&client_addr, 0, sizeof(client_addr));
-        unsigned int client_addr_len = sizeof(client_addr);
-        int conn_fd = 0;
+        client_data_t* client_data = NULL;
 
-        if((conn_fd = accept(server_fd, &client_addr, &client_addr_len)) == -1) {
-            perror("accept");
+        if((client_data = malloc(sizeof(client_data_t))) == NULL)
+        {
+            printf("Error in memory allocation\n");
             return 6;
         }
 
-        std::thread t(std::bind(&handle_connection, conn_fd, client_addr));
-        t.detach();
+        memset(client_data, 0, sizeof(client_data));
+        unsigned int client_addr_len = sizeof(client_data->addr);
+
+        if((client_data->socket_fd = accept(server_fd, &(client_data->addr), &client_addr_len)) == -1) {
+            perror("accept");
+            free(client_data);
+            return 7;
+        }
+
+        pthread_t conn_thread;
+        pthread_attr_t thread_attr;
+
+        memset(&conn_thread, 0, sizeof(conn_thread));
+        memset(&thread_attr, 0, sizeof(thread_attr));
+
+        if(pthread_attr_init(&thread_attr))
+        {
+            printf("Error occureed while initializing thread attributes structure\n");
+            free(client_data);
+            return 8;
+        }
+        if(pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_DETACHED))
+        {
+            printf("Error occureed while setting thread attributes\n");
+            free(client_data);
+            return 9;
+        }
+
+        if(pthread_create(&conn_thread, &thread_attr, &handle_connection, (void*)client_data))
+        {
+            printf("Error creating thread\n");
+            free(client_data);
+            return 10;
+        }
     }
 
     return 0;
 }
 
-void handle_connection(int socket, struct sockaddr addr)
+void* handle_connection(void* thread_data)
 {
-    struct sockaddr_in* p_addr = (struct sockaddr_in*) &addr;	//cast the addr to sockaddr_in
+    client_data_t* client_data = (client_data_t*)thread_data;
+    struct sockaddr_in* p_addr = (struct sockaddr_in*) &client_data->addr;	//cast the addr to sockaddr_in
+    int socket = client_data->socket_fd;
     char client_ipaddr[128];
     memset(client_ipaddr, 0, sizeof(client_ipaddr));
 
     if(inet_ntop(AF_INET, &p_addr->sin_addr, client_ipaddr, sizeof(client_ipaddr)) == NULL) {
         perror("inet_ntop");
-        return;
+        return NULL;
     }
+
+    free(client_data);
 
     printf("Got connection from %s\n", client_ipaddr);
 
@@ -83,7 +119,7 @@ void handle_connection(int socket, struct sockaddr addr)
 
         if((recv_len = recv(socket, &buf, sizeof(buf), 0)) == -1) {
             perror("recv");
-            return;
+            return NULL;
         }
 
         if(recv_len == 0) {
@@ -91,14 +127,14 @@ void handle_connection(int socket, struct sockaddr addr)
             if(close(socket) == -1) {
                 perror("close");
             }
-            return;
+            return NULL;
         }
 
         strncpy(buf, "OK", sizeof(buf)-1);
 
         if(send(socket, &buf, strlen(buf), 0) == -1) {
             perror("send");
-            return;
+            return NULL;
         }
     }
 }

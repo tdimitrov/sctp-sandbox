@@ -14,4 +14,3 @@ const int SOCK_TYPE = SOCK_STREAM;
 const int PROTO = IPPROTO_SCTP;
 const int CLIENT_SEND_COUNT = 5;
 const int SERVER_LISTEN_QUEUE_SIZE = 10;
-//TODO: test SOCK_SEQPACKET and SOCK_STREAM - man 7 sctp
