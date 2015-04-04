@@ -72,21 +72,18 @@ int main(int argc, char* argv[])
         memset(&conn_thread, 0, sizeof(conn_thread));
         memset(&thread_attr, 0, sizeof(thread_attr));
 
-        if(pthread_attr_init(&thread_attr))
-        {
+        if(pthread_attr_init(&thread_attr)) {
             printf("Error occureed while initializing thread attributes structure\n");
             free(client_data);
             return 8;
         }
-        if(pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_DETACHED))
-        {
+        if(pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_DETACHED)) {
             printf("Error occureed while setting thread attributes\n");
             free(client_data);
             return 9;
         }
 
-        if(pthread_create(&conn_thread, &thread_attr, &handle_connection, (void*)client_data))
-        {
+        if(pthread_create(&conn_thread, &thread_attr, &handle_connection, (void*)client_data)) {
             printf("Error creating thread\n");
             free(client_data);
             return 10;
