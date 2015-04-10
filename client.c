@@ -1,5 +1,8 @@
 #include "common.h"
 
+int send_message(int server_fd, struct sockaddr_in *dest_addr, char* payload, int payload_len);
+int get_reply(int server_fd);
+
 int main(int argc, char* argv[])
 {
     int client_fd = 0;
@@ -52,25 +55,80 @@ int main(int argc, char* argv[])
         memset(buf, 0, sizeof(buf));
         snprintf(buf, sizeof(buf)-1, "DATA %d", i);
 
-        if(send(client_fd, &buf, strlen(buf), 0) == -1) {
-            perror("send");
-            return 6;
+        if(send_message(client_fd, &peer_addr, buf, strlen(buf))) {
+            return 1;
+        }
+
+        if(get_reply(client_fd)) {
+            return 2;
         }
 
         memset(buf, 0, sizeof(buf));
-
-        if(recv(client_fd, &buf, sizeof(buf), 0) == -1) {
-            perror("recv");
-            return 7;
-        }
-
-        printf("%s\n", buf);
     }
 
     printf("Closing...\n");
     if(close(client_fd) == -1) {
         perror("close");
         return 8;
+    }
+
+    return 0;
+}
+
+int send_message(int server_fd, struct sockaddr_in *dest_addr, char* payload, int payload_len)
+{
+    struct iovec io_buf;
+    io_buf.iov_base = payload;
+    io_buf.iov_len = payload_len;
+
+    struct msghdr msg;
+    memset(&msg, 0, sizeof(struct msghdr));
+    msg.msg_iov = &io_buf;
+    msg.msg_iovlen = 1;
+    msg.msg_name = dest_addr;
+    msg.msg_namelen = sizeof(struct sockaddr_in);
+
+    if(sendmsg(server_fd, &msg, 0) == -1) {
+        printf("sendmsg() error\n");
+        return 1;
+    }
+
+    return 0;
+}
+
+int get_reply(int server_fd)
+{
+    struct sockaddr_in dest_addr;
+
+    char payload[10];
+    int buffer_len = sizeof(payload) - 1;
+    memset(&payload, 0, sizeof(payload));
+
+    struct iovec io_buf;
+    memset(&payload, 0, sizeof(payload));
+    io_buf.iov_base = payload;
+    io_buf.iov_len = buffer_len;
+
+    struct msghdr msg;
+    memset(&msg, 0, sizeof(struct msghdr));
+    msg.msg_iov = &io_buf;
+    msg.msg_iovlen = 1;
+    msg.msg_name = &dest_addr;
+    msg.msg_namelen = sizeof(struct sockaddr_in);
+
+    while(1) {
+        if(recvmsg(server_fd, &msg, 0) == -1) {
+            printf("recvmsg() error\n");
+            return 1;
+        }
+
+        if(msg.msg_flags & MSG_EOR) {
+            printf("%s\n", payload);
+            break;
+        }
+        else {
+            printf("%s", payload); //if EOR flag is not set, the buffer is not big enough for the whole message
+        }
     }
 
     return 0;

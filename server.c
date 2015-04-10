@@ -1,12 +1,9 @@
 #include "common.h"
 #include <pthread.h>
 
-typedef struct _client_data {
-    int socket_fd;
-    struct sockaddr addr;
-} client_data_t;
+int get_message(int server_fd, struct sockaddr_in *sender_addr);
+int send_reply(int server_fd, struct sockaddr_in* dest_addr);
 
-void *handle_connection(void *thread_data);
 
 int main(int argc, char* argv[])
 {
@@ -48,92 +45,82 @@ int main(int argc, char* argv[])
 
     printf("Listening on port %d\n", server_port);
 
+    struct sockaddr_in addr_buf;
+
     while(1) {
-        client_data_t* client_data = NULL;
+        memset(&addr_buf, 0, sizeof(addr_buf));
 
-        if((client_data = malloc(sizeof(client_data_t))) == NULL)
-        {
-            printf("Error in memory allocation\n");
-            return 6;
+        if(get_message(server_fd, &addr_buf)) {
+            break;
         }
 
-        memset(client_data, 0, sizeof(client_data));
-        unsigned int client_addr_len = sizeof(client_data->addr);
+        if(send_reply(server_fd, &addr_buf)) {
+            break;
+        }
+    }
 
-        if((client_data->socket_fd = accept(server_fd, &(client_data->addr), &client_addr_len)) == -1) {
-            perror("accept");
-            free(client_data);
-            return 7;
+    return 6;
+}
+
+int get_message(int server_fd, struct sockaddr_in* sender_addr)
+{
+    char payload[1024];
+    int buffer_len = sizeof(payload) - 1;
+    memset(&payload, 0, sizeof(payload));
+
+    struct iovec io_buf;
+    memset(&payload, 0, sizeof(payload));
+    io_buf.iov_base = payload;
+    io_buf.iov_len = buffer_len;
+
+    struct msghdr msg;
+    memset(&msg, 0, sizeof(struct msghdr));
+    msg.msg_iov = &io_buf;
+    msg.msg_iovlen = 1;
+    msg.msg_name = sender_addr;
+    msg.msg_namelen = sizeof(struct sockaddr_in);
+
+    while(1) {
+        int recv_size = 0;
+        if((recv_size = recvmsg(server_fd, &msg, 0)) == -1) {
+            printf("recvmsg() error\n");
+            return 1;
         }
 
-        pthread_t conn_thread;
-        pthread_attr_t thread_attr;
-
-        memset(&conn_thread, 0, sizeof(conn_thread));
-        memset(&thread_attr, 0, sizeof(thread_attr));
-
-        if(pthread_attr_init(&thread_attr)) {
-            printf("Error occureed while initializing thread attributes structure\n");
-            free(client_data);
-            return 8;
+        if(msg.msg_flags & MSG_EOR) {
+            printf("%s\n", payload);
+            break;
         }
-        if(pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_DETACHED)) {
-            printf("Error occureed while setting thread attributes\n");
-            free(client_data);
-            return 9;
-        }
-
-        if(pthread_create(&conn_thread, &thread_attr, &handle_connection, (void*)client_data)) {
-            printf("Error creating thread\n");
-            free(client_data);
-            return 10;
+        else {
+            printf("%s", payload); //if EOR flag is not set, the buffer is not big enough for the whole message
         }
     }
 
     return 0;
 }
 
-void* handle_connection(void* thread_data)
+int send_reply(int server_fd, struct sockaddr_in* dest_addr)
+
 {
-    client_data_t* client_data = (client_data_t*)thread_data;
-    struct sockaddr_in* p_addr = (struct sockaddr_in*) &client_data->addr;	//cast the addr to sockaddr_in
-    int socket = client_data->socket_fd;
-    char client_ipaddr[128];
-    memset(client_ipaddr, 0, sizeof(client_ipaddr));
+    char buf[8];
+    memset(buf, 0, sizeof(buf));
+    strncpy(buf, "OK", sizeof(buf)-1);
 
-    if(inet_ntop(AF_INET, &p_addr->sin_addr, client_ipaddr, sizeof(client_ipaddr)) == NULL) {
-        perror("inet_ntop");
-        return NULL;
+    struct iovec io_buf;
+    io_buf.iov_base = buf;
+    io_buf.iov_len = sizeof(buf);
+
+    struct msghdr msg;
+    memset(&msg, 0, sizeof(struct msghdr));
+    msg.msg_iov = &io_buf;
+    msg.msg_iovlen = 1;
+    msg.msg_name = dest_addr;
+    msg.msg_namelen = sizeof(struct sockaddr_in);
+
+    if(sendmsg(server_fd, &msg, 0) == -1) {
+        printf("sendmsg() error\n");
+        return 1;
     }
 
-    free(client_data);
-
-    printf("Got connection from %s\n", client_ipaddr);
-
-    while(1) {
-        char buf[1024];
-        int recv_len = 0;
-
-        if((recv_len = recv(socket, &buf, sizeof(buf), 0)) == -1) {
-            perror("recv");
-            return NULL;
-        }
-
-        if(recv_len == 0) {
-            printf("Connection from %s closed by remote peer.\n", client_ipaddr);
-            if(close(socket) == -1) {
-                perror("close");
-            }
-            return NULL;
-        }
-
-        printf("Message received: %s\n", buf);
-
-        strncpy(buf, "OK", sizeof(buf)-1);
-
-        if(send(socket, &buf, strlen(buf), 0) == -1) {
-            perror("send");
-            return NULL;
-        }
-    }
+    return 0;
 }
