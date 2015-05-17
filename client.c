@@ -29,7 +29,6 @@ int main(int argc, char* argv[])
         perror("socket");
         return 3;
     }
-
     struct sockaddr_in peer_addr;
     memset(&peer_addr, 0, sizeof(struct sockaddr_in));
     peer_addr.sin_family = ADDR_FAMILY;
@@ -39,37 +38,31 @@ int main(int argc, char* argv[])
         return 4;
     }
 
-    printf("Connecting...\n");
-
-    if(connect(client_fd, (struct sockaddr*)&peer_addr, sizeof(peer_addr)) == -1) {
-        perror("connect");
-        return 5;
-    }
-
-    printf("OK\n");
-
     char buf[1024];
     for(int i = 0; i < CLIENT_SEND_COUNT; ++i) {
-        printf("Sending message %d of %d. Result: ", i+1, CLIENT_SEND_COUNT);
+        printf("Sending message %d of %d.\n", i+1, CLIENT_SEND_COUNT);
 
         memset(buf, 0, sizeof(buf));
         snprintf(buf, sizeof(buf)-1, "DATA %d", i);
 
         if(send_message(client_fd, &peer_addr, buf, strlen(buf))) {
-            return 1;
-        }
-
-        if(get_reply(client_fd)) {
-            return 2;
+            return 5;
         }
 
         memset(buf, 0, sizeof(buf));
     }
 
+    for(int i = 0; i < CLIENT_SEND_COUNT; ++i) {
+        printf("Result %d\n", i);
+        if(get_reply(client_fd)) {
+            return 6;
+        }
+    }
+
     printf("Closing...\n");
     if(close(client_fd) == -1) {
         perror("close");
-        return 8;
+        return 7;
     }
 
     return 0;
@@ -81,6 +74,14 @@ int send_message(int server_fd, struct sockaddr_in *dest_addr, char* payload, in
     io_buf.iov_base = payload;
     io_buf.iov_len = payload_len;
 
+    char* ancillary_data = NULL;
+    int ancillary_data_len = CMSG_SPACE(sizeof(struct sctp_initmsg)) + CMSG_SPACE(sizeof(struct sctp_sndinfo));
+    if((ancillary_data = malloc(ancillary_data_len)) == NULL) {
+        printf("Error allocating memory\n");
+        return 1;
+    }
+    memset(ancillary_data, 0, ancillary_data_len);
+
     struct msghdr msg;
     memset(&msg, 0, sizeof(struct msghdr));
     msg.msg_iov = &io_buf;
@@ -88,10 +89,37 @@ int send_message(int server_fd, struct sockaddr_in *dest_addr, char* payload, in
     msg.msg_name = dest_addr;
     msg.msg_namelen = sizeof(struct sockaddr_in);
 
+    msg.msg_control = ancillary_data;
+    msg.msg_controllen = ancillary_data_len;
+
+    //fill in the data
+    struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
+    cmsg->cmsg_level = PROTO;
+    cmsg->cmsg_type = SCTP_INIT;
+    cmsg->cmsg_len = CMSG_LEN(sizeof(struct sctp_initmsg));
+    struct sctp_initmsg* init_dt = (struct sctp_initmsg*) CMSG_DATA(cmsg);
+    init_dt->sinit_max_attempts = 0;
+    init_dt->sinit_max_init_timeo = 0;
+    init_dt->sinit_max_instreams = 5;
+    init_dt->sinit_num_ostreams = 6;
+
+    cmsg = CMSG_NXTHDR(&msg, cmsg);
+    cmsg->cmsg_level = PROTO;
+    cmsg->cmsg_type = SCTP_SNDINFO;
+    cmsg->cmsg_len = CMSG_LEN(sizeof(struct sctp_sndinfo));
+    struct sctp_sndinfo* sndinfo_dt = (struct sctp_sndinfo*) CMSG_DATA(cmsg);
+    sndinfo_dt->snd_sid = 3;
+    sndinfo_dt->snd_flags = 0;
+    sndinfo_dt->snd_ppid = htonl(8);
+    sndinfo_dt->snd_context = 3;
+    sndinfo_dt->snd_assoc_id = 0;
+
     if(sendmsg(server_fd, &msg, 0) == -1) {
-        printf("sendmsg() error\n");
-        return 1;
+        perror("sendmsg()");
+        return 2;
     }
+
+    free(ancillary_data);
 
     return 0;
 }
