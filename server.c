@@ -4,7 +4,7 @@
 int get_message(int server_fd, struct sockaddr_in *sender_addr);
 int send_reply(int server_fd, struct sockaddr_in* dest_addr);
 
-int enable_aucillary_data(int fd)
+int enable_ancillary_data(int fd)
 {
     int boolean_as_int = 1;
     if(setsockopt(fd, PROTO, SCTP_RECVRCVINFO, &boolean_as_int, sizeof(boolean_as_int))) {
@@ -42,7 +42,7 @@ int main(int argc, char* argv[])
         return 3;
     }
 
-    if(enable_aucillary_data(server_fd)) {
+    if(enable_ancillary_data(server_fd)) {
         return 4;
     }
 
@@ -81,12 +81,12 @@ int main(int argc, char* argv[])
     return 7;
 }
 
-void handle_aucillary_data(struct msghdr* msg)
+void handle_ancillary_data(struct msghdr* msg)
 {
     struct cmsghdr *cmsgptr;
     for(cmsgptr = CMSG_FIRSTHDR(msg); cmsgptr != NULL; cmsgptr = CMSG_NXTHDR(msg, cmsgptr)) {
         if (cmsgptr->cmsg_len == 0) {
-            printf("Error handling aucillary data!\n");
+            printf("Error handling ancillary data!\n");
             break;
         }
         if(cmsgptr->cmsg_level == PROTO && cmsgptr->cmsg_type == SCTP_RCVINFO) {
@@ -141,7 +141,7 @@ int get_message(int server_fd, struct sockaddr_in* sender_addr)
             return 2;
         }
 
-        handle_aucillary_data(&msg);
+        handle_ancillary_data(&msg);
 
         if(msg.msg_flags & MSG_EOR) {
             printf("%s\n", payload);
