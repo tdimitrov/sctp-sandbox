@@ -106,7 +106,7 @@ int get_reply(int server_fd)
 {
     struct sockaddr_in dest_addr;
 
-    char payload[10];
+    char payload[1024];
     int buffer_len = sizeof(payload) - 1;
     memset(&payload, 0, sizeof(payload));
 
