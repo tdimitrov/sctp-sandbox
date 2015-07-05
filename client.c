@@ -64,7 +64,7 @@ int main(int argc, char* argv[])
         if(send_message(client_fd, &peer_addr, buf, strlen(buf))) {
             return 1;
         }
-        sleep(1);
+
         if(get_reply(client_fd)) {
             return 2;
         }
