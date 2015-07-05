@@ -30,20 +30,26 @@ int main(int argc, char* argv[])
         return 3;
     }
 
+    //enable some notifications
+    if(enable_notifications(client_fd) != 0) {
+        printf("Error enabling notifications.\n");
+        return 4;
+    }
+
     struct sockaddr_in peer_addr;
     memset(&peer_addr, 0, sizeof(struct sockaddr_in));
     peer_addr.sin_family = ADDR_FAMILY;
     peer_addr.sin_port = htons(server_port);
     if(inet_pton(AF_INET, server_ip, &(peer_addr.sin_addr)) != 1) {
         printf("Error converting IP address (%s) to sockaddr_in structure\n", server_ip);
-        return 4;
+        return 5;
     }
 
     printf("Connecting...\n");
 
     if(connect(client_fd, (struct sockaddr*)&peer_addr, sizeof(peer_addr)) == -1) {
         perror("connect");
-        return 5;
+        return 6;
     }
 
     printf("OK\n");
@@ -58,7 +64,7 @@ int main(int argc, char* argv[])
         if(send_message(client_fd, &peer_addr, buf, strlen(buf))) {
             return 1;
         }
-
+        sleep(1);
         if(get_reply(client_fd)) {
             return 2;
         }
@@ -100,7 +106,7 @@ int get_reply(int server_fd)
 {
     struct sockaddr_in dest_addr;
 
-    char payload[10];
+    char payload[1024];
     int buffer_len = sizeof(payload) - 1;
     memset(&payload, 0, sizeof(payload));
 
@@ -117,12 +123,21 @@ int get_reply(int server_fd)
     msg.msg_namelen = sizeof(struct sockaddr_in);
 
     while(1) {
-        if(recvmsg(server_fd, &msg, 0) == -1) {
+        int recv_size = 0;
+        if((recv_size = recvmsg(server_fd, &msg, 0)) == -1) {
             printf("recvmsg() error\n");
             return 1;
         }
 
-        if(msg.msg_flags & MSG_EOR) {
+        if(msg.msg_flags & MSG_NOTIFICATION) {
+            if(!msg.msg_flags & MSG_EOR) {
+                printf("Notification received, but the buffer is not big enough.\n");
+                continue;
+            }
+
+            handle_notification((union sctp_notification*)payload, recv_size);
+        }
+        else if(msg.msg_flags & MSG_EOR) {
             printf("%s\n", payload);
             break;
         }

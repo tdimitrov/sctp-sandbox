@@ -27,6 +27,13 @@ int main(int argc, char* argv[])
         return 3;
     }
 
+    //enable some notifications
+    if(enable_notifications(server_fd) != 0) {
+        printf("Error enabling notifications\n");
+        return 4;
+    }
+
+
     struct sockaddr_in bind_addr;
     memset(&bind_addr, 0, sizeof(struct sockaddr_in));
     bind_addr.sin_family = ADDR_FAMILY;
@@ -35,12 +42,12 @@ int main(int argc, char* argv[])
 
     if(bind(server_fd, (struct sockaddr*)&bind_addr, sizeof(bind_addr)) == -1) {
         perror("bind");
-        return 4;
+        return 5;
     }
 
     if(listen(server_fd, SERVER_LISTEN_QUEUE_SIZE) != 0) {
         perror("listen");
-        return 5;
+        return 6;
     }
 
     printf("Listening on port %d\n", server_port);
@@ -59,7 +66,7 @@ int main(int argc, char* argv[])
         }
     }
 
-    return 6;
+    return 7;
 }
 
 int get_message(int server_fd, struct sockaddr_in* sender_addr)
@@ -87,7 +94,15 @@ int get_message(int server_fd, struct sockaddr_in* sender_addr)
             return 1;
         }
 
-        if(msg.msg_flags & MSG_EOR) {
+        if(msg.msg_flags & MSG_NOTIFICATION) {
+            if(!msg.msg_flags & MSG_EOR) {
+                printf("Notification received, but the buffer is not big enough.\n");
+                continue;
+            }
+
+            handle_notification((union sctp_notification*)payload, recv_size);
+        }
+        else if(msg.msg_flags & MSG_EOR) {
             printf("%s\n", payload);
             break;
         }
