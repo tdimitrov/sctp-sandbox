@@ -26,18 +26,23 @@ int enable_notifications(int fd)
     return setsockopt(fd, IPPROTO_SCTP, SCTP_EVENTS, &events_subscr, sizeof(events_subscr));
 }
 
-int handle_notification(union sctp_notification *notif, size_t msg_iovlen)
+int handle_notification(union sctp_notification *notif, size_t notif_len)
 {
     // http://stackoverflow.com/questions/20679070/how-does-one-determine-the-size-of-an-unnamed-struct
     int notif_header_size = sizeof( ((union sctp_notification*)NULL)->sn_header );
 
-    if(notif_header_size > msg_iovlen) {
+    if(notif_header_size > notif_len) {
         printf("Error: Notification msg size is smaller than notification header size!\n");
         return 1;
     }
 
     switch(notif->sn_header.sn_type) {
     case SCTP_ASSOC_CHANGE: {
+        if(sizeof(struct sctp_assoc_change) > notif_len) {
+            printf("Error notification msg size is smaller than struct sctp_assoc_change size\n");
+            return 2;
+        }
+
         char* state = NULL;
         struct sctp_assoc_change* n = &notif->sn_assoc_change;
 
@@ -70,6 +75,11 @@ int handle_notification(union sctp_notification *notif, size_t msg_iovlen)
     }
 
     case SCTP_SHUTDOWN_EVENT: {
+        if(sizeof(struct sctp_shutdown_event) > notif_len) {
+            printf("Error notification msg size is smaller than struct sctp_assoc_change size\n");
+            return 3;
+        }
+
         struct sctp_shutdown_event* n = &notif->sn_shutdown_event;
 
         printf("SCTP_SHUTDOWN_EVENT notif: assoc id: %d\n", n->sse_assoc_id);
