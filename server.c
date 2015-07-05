@@ -95,7 +95,7 @@ int get_message(int server_fd, struct sockaddr_in* sender_addr)
         }
 
         if(msg.msg_flags & MSG_NOTIFICATION) {
-            if(!msg.msg_flags & MSG_EOR) {
+            if(!(msg.msg_flags & MSG_EOR)) {
                 printf("Notification received, but the buffer is not big enough.\n");
                 continue;
             }
