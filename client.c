@@ -106,7 +106,7 @@ int get_reply(int server_fd)
 {
     struct sockaddr_in dest_addr;
 
-    char payload[1024];
+    char payload[10];
     int buffer_len = sizeof(payload) - 1;
     memset(&payload, 0, sizeof(payload));
 
@@ -130,7 +130,7 @@ int get_reply(int server_fd)
         }
 
         if(msg.msg_flags & MSG_NOTIFICATION) {
-            if(!msg.msg_flags & MSG_EOR) {
+            if(!(msg.msg_flags & MSG_EOR)) {
                 printf("Notification received, but the buffer is not big enough.\n");
                 continue;
             }
