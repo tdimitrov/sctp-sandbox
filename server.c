@@ -40,7 +40,7 @@ int main(int argc, char* argv[])
     bind_addr.sin_port = htons(server_port);
     bind_addr.sin_addr.s_addr = INADDR_ANY;
 
-    if(bind(server_fd, (struct sockaddr*)&bind_addr, sizeof(bind_addr)) == -1) {
+    if(sctp_bindx(server_fd, (struct sockaddr*)&bind_addr, 1, SCTP_BINDX_ADD_ADDR) == -1) {
         perror("bind");
         return 5;
     }
@@ -100,7 +100,7 @@ int get_message(int server_fd, struct sockaddr_in* sender_addr)
                 continue;
             }
 
-            handle_notification((union sctp_notification*)payload, recv_size);
+            handle_notification((union sctp_notification*)payload, recv_size, server_fd);
         }
         else if(msg.msg_flags & MSG_EOR) {
             printf("%s\n", payload);

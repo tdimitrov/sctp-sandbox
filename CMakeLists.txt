@@ -5,6 +5,9 @@ project (sctp_sandbox)
 set(CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} -std=c99")
 find_package(Threads REQUIRED)
 
+find_library(SCTP_LIB sctp)
+
 add_executable(server server.c common.h)
 add_executable(client client.c common.h)
-target_link_libraries(server ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(server ${CMAKE_THREAD_LIBS_INIT} ${SCTP_LIB})
+target_link_libraries(client ${CMAKE_THREAD_LIBS_INIT} ${SCTP_LIB})

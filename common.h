@@ -26,7 +26,65 @@ int enable_notifications(int fd)
     return setsockopt(fd, IPPROTO_SCTP, SCTP_EVENTS, &events_subscr, sizeof(events_subscr));
 }
 
-int handle_notification(union sctp_notification *notif, size_t notif_len)
+void fill_addresses(struct sockaddr *addrs, int addr_count, char* text_buf, int text_buf_size)
+{
+    for(int i = 0; i < addr_count; i++) {
+        char ip_addr[16];
+        memset(ip_addr, 0, sizeof(ip_addr));
+
+        struct sockaddr_in* addr_in = ( struct sockaddr_in*)&addrs[i];  //address part should be passed to inet_ntop
+        inet_ntop(ADDR_FAMILY, &addr_in->sin_addr, ip_addr, sizeof(ip_addr));
+
+        int curr_text_buf_len = strlen(text_buf);
+        snprintf(text_buf + curr_text_buf_len, text_buf_size - curr_text_buf_len, "%s ", ip_addr);
+    }
+}
+
+int get_assoc_local_addresses(const sctp_assoc_t assoc_id, const int socket, char* text_buf, int text_buf_size)
+{
+    struct sockaddr *addrs = NULL;
+    int addr_count = -1;
+
+    memset(text_buf, 0, text_buf_size);
+    text_buf_size--;    //leave space for the null terminator
+
+    if((addr_count = sctp_getpaddrs(socket, assoc_id, &addrs)) == -1) {
+        printf("Error occured while calling sctp_getpaddrs()\n");
+        return 1;
+    }
+
+    snprintf(text_buf, text_buf_size, "Peer IP addresses: ");
+
+    fill_addresses(addrs, addr_count, text_buf, text_buf_size);
+
+    sctp_freepaddrs(addrs);
+
+    return 0;
+}
+
+int get_assoc_peer_addresses(const sctp_assoc_t assoc_id, const int socket, char* text_buf, int text_buf_size)
+{
+    struct sockaddr *addrs = NULL;
+    int addr_count = -1;
+
+    memset(text_buf, 0, text_buf_size);
+    text_buf_size--;    //leave space for the null terminator
+
+    if((addr_count = sctp_getladdrs(socket, assoc_id, &addrs)) == -1) {
+        printf("Error occured while calling sctp_getpaddrs()\n");
+        return 1;
+    }
+
+    snprintf(text_buf, text_buf_size, "Local IP addresses: ");
+
+    fill_addresses(addrs, addr_count, text_buf, text_buf_size);
+
+    sctp_freeladdrs(addrs);
+
+    return 0;
+}
+
+int handle_notification(union sctp_notification *notif, size_t notif_len, const int socket)
 {
     // http://stackoverflow.com/questions/20679070/how-does-one-determine-the-size-of-an-unnamed-struct
     int notif_header_size = sizeof( ((union sctp_notification*)NULL)->sn_header );
@@ -44,6 +102,8 @@ int handle_notification(union sctp_notification *notif, size_t notif_len)
         }
 
         char* state = NULL;
+        char local_addresses[256];
+        char peer_addresses[256];
         struct sctp_assoc_change* n = &notif->sn_assoc_change;
 
         switch(n->sac_state) {
@@ -68,8 +128,11 @@ int handle_notification(union sctp_notification *notif, size_t notif_len)
             break;
         }
 
-        printf("SCTP_ASSOC_CHANGE notif: state: %s, error code: %d, out streams: %d, in streams: %d, assoc id: %d\n",
-               state, n->sac_error, n->sac_outbound_streams, n->sac_inbound_streams, n->sac_assoc_id);
+        get_assoc_local_addresses(n->sac_assoc_id, socket, local_addresses, sizeof(local_addresses));
+        get_assoc_peer_addresses(n->sac_assoc_id, socket, peer_addresses, sizeof(peer_addresses));
+
+        printf("SCTP_ASSOC_CHANGE notif: state: %s, error code: %d, out streams: %d, in streams: %d, assoc id: %d %s %s\n",
+               state, n->sac_error, n->sac_outbound_streams, n->sac_inbound_streams, n->sac_assoc_id, local_addresses, peer_addresses);
 
         break;
     }
@@ -87,7 +150,7 @@ int handle_notification(union sctp_notification *notif, size_t notif_len)
     }
 
     default:
-        printf("Unhandled notification type %d\n", notif->sn_header.sn_type);
+        printf("Und notification type %d\n", notif->sn_header.sn_type);
         break;
     }
 

@@ -135,7 +135,7 @@ int get_reply(int server_fd)
                 continue;
             }
 
-            handle_notification((union sctp_notification*)payload, recv_size);
+            handle_notification((union sctp_notification*)payload, recv_size, server_fd);
         }
         else if(msg.msg_flags & MSG_EOR) {
             printf("%s\n", payload);
