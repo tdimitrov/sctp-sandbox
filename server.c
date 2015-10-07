@@ -75,34 +75,30 @@ int get_message(int server_fd, struct sockaddr_in* sender_addr)
     int buffer_len = sizeof(payload) - 1;
     memset(&payload, 0, sizeof(payload));
 
-    struct iovec io_buf;
-    memset(&payload, 0, sizeof(payload));
-    io_buf.iov_base = payload;
-    io_buf.iov_len = buffer_len;
+    int sender_addr_size = sizeof(struct sockaddr_in);
 
-    struct msghdr msg;
-    memset(&msg, 0, sizeof(struct msghdr));
-    msg.msg_iov = &io_buf;
-    msg.msg_iovlen = 1;
-    msg.msg_name = sender_addr;
-    msg.msg_namelen = sizeof(struct sockaddr_in);
+    struct sctp_sndrcvinfo snd_rcv_info;
+    memset(&snd_rcv_info, 0, sizeof(snd_rcv_info));
+
+    int msg_flags = 0;
 
     while(1) {
         int recv_size = 0;
-        if((recv_size = recvmsg(server_fd, &msg, 0)) == -1) {
+
+        if((recv_size = sctp_recvmsg(server_fd, &payload, buffer_len, (struct sockaddr*)sender_addr, &sender_addr_size, &snd_rcv_info, &msg_flags)) == -1) {
             printf("recvmsg() error\n");
             return 1;
         }
 
-        if(msg.msg_flags & MSG_NOTIFICATION) {
-            if(!(msg.msg_flags & MSG_EOR)) {
+        if(msg_flags & MSG_NOTIFICATION) {
+            if(!(msg_flags & MSG_EOR)) {
                 printf("Notification received, but the buffer is not big enough.\n");
                 continue;
             }
 
             handle_notification((union sctp_notification*)payload, recv_size, server_fd);
         }
-        else if(msg.msg_flags & MSG_EOR) {
+        else if(msg_flags & MSG_EOR) {
             printf("%s\n", payload);
             break;
         }
