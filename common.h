@@ -102,13 +102,21 @@ int handle_notification(union sctp_notification *notif, size_t notif_len, const 
         }
 
         char* state = NULL;
+
         char local_addresses[256];
+        memset(&local_addresses, 0, sizeof(local_addresses));
+
         char peer_addresses[256];
+        memset(&peer_addresses, 0, sizeof(peer_addresses));
+
         struct sctp_assoc_change* n = &notif->sn_assoc_change;
 
         switch(n->sac_state) {
         case SCTP_COMM_UP:
             state = "COMM UP";
+            get_assoc_local_addresses(n->sac_assoc_id, socket, local_addresses, sizeof(local_addresses));
+            get_assoc_peer_addresses(n->sac_assoc_id, socket, peer_addresses, sizeof(peer_addresses));
+
             break;
 
         case SCTP_COMM_LOST:
@@ -127,9 +135,6 @@ int handle_notification(union sctp_notification *notif, size_t notif_len, const 
             state = "CAN'T START ASSOC";
             break;
         }
-
-        get_assoc_local_addresses(n->sac_assoc_id, socket, local_addresses, sizeof(local_addresses));
-        get_assoc_peer_addresses(n->sac_assoc_id, socket, peer_addresses, sizeof(peer_addresses));
 
         printf("SCTP_ASSOC_CHANGE notif: state: %s, error code: %d, out streams: %d, in streams: %d, assoc id: %d %s %s\n",
                state, n->sac_error, n->sac_outbound_streams, n->sac_inbound_streams, n->sac_assoc_id, local_addresses, peer_addresses);
