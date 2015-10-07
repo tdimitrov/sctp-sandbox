@@ -121,18 +121,7 @@ int send_reply(int server_fd, struct sockaddr_in* dest_addr)
     memset(buf, 0, sizeof(buf));
     strncpy(buf, "OK", sizeof(buf)-1);
 
-    struct iovec io_buf;
-    io_buf.iov_base = buf;
-    io_buf.iov_len = sizeof(buf);
-
-    struct msghdr msg;
-    memset(&msg, 0, sizeof(struct msghdr));
-    msg.msg_iov = &io_buf;
-    msg.msg_iovlen = 1;
-    msg.msg_name = dest_addr;
-    msg.msg_namelen = sizeof(struct sockaddr_in);
-
-    if(sendmsg(server_fd, &msg, 0) == -1) {
+    if(sctp_sendmsg(server_fd, buf, strlen(buf), (struct sockaddr*)dest_addr, sizeof(struct sockaddr_in), 0, 0, 0, 0, 0) == -1) {
         printf("sendmsg() error\n");
         return 1;
     }

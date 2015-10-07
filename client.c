@@ -83,19 +83,8 @@ int main(int argc, char* argv[])
 
 int send_message(int server_fd, struct sockaddr_in *dest_addr, char* payload, int payload_len)
 {
-    struct iovec io_buf;
-    io_buf.iov_base = payload;
-    io_buf.iov_len = payload_len;
-
-    struct msghdr msg;
-    memset(&msg, 0, sizeof(struct msghdr));
-    msg.msg_iov = &io_buf;
-    msg.msg_iovlen = 1;
-    msg.msg_name = dest_addr;
-    msg.msg_namelen = sizeof(struct sockaddr_in);
-
-    if(sendmsg(server_fd, &msg, 0) == -1) {
-        printf("sendmsg() error\n");
+    if(sctp_sendmsg(server_fd, payload, payload_len, (struct sockaddr*)dest_addr, sizeof(struct sockaddr_in), 0, 0, 0, 0, 0) == -1) {
+        printf("sctp_sendmsg() error\n");
         return 1;
     }
 
