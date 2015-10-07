@@ -84,6 +84,36 @@ int get_assoc_peer_addresses(const sctp_assoc_t assoc_id, const int socket, char
     return 0;
 }
 
+int get_association_id(union sctp_notification *notif, size_t notif_len)
+{
+    // http://stackoverflow.com/questions/20679070/how-does-one-determine-the-size-of-an-unnamed-struct
+    int notif_header_size = sizeof( ((union sctp_notification*)NULL)->sn_header );
+
+    if(notif_header_size > notif_len) {
+        printf("Error: Notification msg size is smaller than notification header size!\n");
+        return -1;
+    }
+
+    if(notif->sn_header.sn_type != SCTP_ASSOC_CHANGE) {
+        printf("Invalid notification passed to get_association_id()\n");
+        return -2;
+    }
+
+    if(sizeof(struct sctp_assoc_change) > notif_len) {
+        printf("Error notification msg size is smaller than struct sctp_assoc_change size\n");
+        return -3;
+    }
+
+    struct sctp_assoc_change* n = &notif->sn_assoc_change;
+
+    if(n->sac_state != SCTP_COMM_UP) {
+        printf("Notification with invalid state passed to get_association_id()\n");
+        return -4;
+    }
+
+    return n->sac_assoc_id;
+}
+
 int handle_notification(union sctp_notification *notif, size_t notif_len, const int socket)
 {
     // http://stackoverflow.com/questions/20679070/how-does-one-determine-the-size-of-an-unnamed-struct
