@@ -1,9 +1,9 @@
 #include "common.h"
 #include <pthread.h>
 
-int get_message(int server_fd, struct sockaddr_in *sender_addr);
-int send_reply(int server_fd, struct sockaddr_in* dest_addr);
-
+int get_connection(int server_fd);
+int handle_client(int server_fd, int assoc_id);
+void* client_thread(void* client_conn_fd);
 
 int main(int argc, char* argv[])
 {
@@ -33,7 +33,6 @@ int main(int argc, char* argv[])
         return 4;
     }
 
-
     struct sockaddr_in bind_addr;
     memset(&bind_addr, 0, sizeof(struct sockaddr_in));
     bind_addr.sin_family = ADDR_FAMILY;
@@ -52,16 +51,8 @@ int main(int argc, char* argv[])
 
     printf("Listening on port %d\n", server_port);
 
-    struct sockaddr_in addr_buf;
-
     while(1) {
-        memset(&addr_buf, 0, sizeof(addr_buf));
-
-        if(get_message(server_fd, &addr_buf)) {
-            break;
-        }
-
-        if(send_reply(server_fd, &addr_buf)) {
+        if(get_connection(server_fd)) {
             break;
         }
     }
@@ -69,13 +60,16 @@ int main(int argc, char* argv[])
     return 7;
 }
 
-int get_message(int server_fd, struct sockaddr_in* sender_addr)
+int get_connection(int server_fd)
 {
+    int sender_addr_size = sizeof(struct sockaddr_in);
     char payload[1024];
+
     int buffer_len = sizeof(payload) - 1;
     memset(&payload, 0, sizeof(payload));
 
-    int sender_addr_size = sizeof(struct sockaddr_in);
+    struct sockaddr_in sender_addr;
+    memset(&sender_addr, 0, sender_addr_size);
 
     struct sctp_sndrcvinfo snd_rcv_info;
     memset(&snd_rcv_info, 0, sizeof(snd_rcv_info));
@@ -85,42 +79,111 @@ int get_message(int server_fd, struct sockaddr_in* sender_addr)
     while(1) {
         int recv_size = 0;
 
-        if((recv_size = sctp_recvmsg(server_fd, &payload, buffer_len, (struct sockaddr*)sender_addr, &sender_addr_size, &snd_rcv_info, &msg_flags)) == -1) {
+        if((recv_size = sctp_recvmsg(server_fd, &payload, buffer_len, (struct sockaddr*)&sender_addr, &sender_addr_size, &snd_rcv_info, &msg_flags)) == -1) {
             printf("recvmsg() error\n");
             return 1;
         }
 
-        if(msg_flags & MSG_NOTIFICATION) {
-            if(!(msg_flags & MSG_EOR)) {
-                printf("Notification received, but the buffer is not big enough.\n");
-                continue;
-            }
-
-            handle_notification((union sctp_notification*)payload, recv_size, server_fd);
-        }
-        else if(msg_flags & MSG_EOR) {
-            printf("%s\n", payload);
+        if(!(msg_flags & MSG_NOTIFICATION)) {
+            printf("Warning! Received payload in client handling loop!!!\n");
             break;
         }
-        else {
-            printf("%s", payload); //if EOR flag is not set, the buffer is not big enough for the whole message
+
+        if(!(msg_flags & MSG_EOR)) {
+            printf("Notification received, but the buffer is not big enough.\n");
+            continue;
         }
+
+        int assoc_id = get_association_id((union sctp_notification*)payload, recv_size);
+        if(assoc_id < 0) {
+            printf("Error getting association id\n");
+            break;
+        }
+
+        if(handle_client(server_fd, assoc_id) < 0) {
+            printf("Error handling client\n");
+            break;
+        }
+
+
     }
 
     return 0;
 }
 
-int send_reply(int server_fd, struct sockaddr_in* dest_addr)
 
+int handle_client(int server_fd, int assoc_id)
 {
-    char buf[8];
-    memset(buf, 0, sizeof(buf));
-    strncpy(buf, "OK", sizeof(buf)-1);
+    int* client_conn_fd = NULL;
 
-    if(sctp_sendmsg(server_fd, buf, strlen(buf), (struct sockaddr*)dest_addr, sizeof(struct sockaddr_in), 0, 0, 0, 0, 0) == -1) {
-        printf("sendmsg() error\n");
+    if((client_conn_fd = (int*)calloc(1, sizeof(int))) == NULL) {
+        printf("Error allocating memory\n");
         return 1;
     }
 
+    *client_conn_fd = sctp_peeloff(server_fd, assoc_id);
+    if(*client_conn_fd == -1) {
+        printf("Error in peeloff\n");
+        return 2;
+    }
+
+    if(disable_notifications(*client_conn_fd) != 0) {
+        printf("Error disabling notifications\n");
+        return 3;
+    }
+
+    pthread_attr_t thread_attr;
+    memset(&thread_attr, 0, sizeof thread_attr);
+
+    if(pthread_attr_init(&thread_attr)) {
+        printf("Error initialising thread attributes\n");
+        return 4;
+    }
+
+    if(pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_DETACHED)) {
+        printf("Error setting detached attribute to thread\n");
+        return 5;
+    }
+
+    pthread_t new_thread;
+    memset(&new_thread, 0, sizeof(new_thread));
+
+    if(pthread_create(&new_thread, &thread_attr, &client_thread, (void*)client_conn_fd)) {
+        printf("Error creating thread\n");
+        return 6;
+    }
+
     return 0;
+}
+
+void* client_thread(void* client_conn_fd)
+{
+    //save the fd to local variable, to avoid memory leaks
+    int fd = *(int*)client_conn_fd;
+    free(client_conn_fd);
+
+    while (1) {
+        const int buf_size = 1024;
+        char buf[buf_size];
+        memset(buf, 0, buf_size);
+
+        int recv_size = recv(fd, buf, buf_size-1, 0);
+
+        if(recv_size == -1) {
+            perror("recv()");
+            return NULL;
+        }
+        else if (recv_size == 0) {
+            printf("Client closed the connection\n");
+            return NULL;
+        }
+
+        printf("%d: %s\n",recv_size, buf);
+
+        if(send(fd, "OK", 2, 0) == -1) {
+            perror("send()");
+            return NULL;
+        }
+    }
+    return NULL;
 }
