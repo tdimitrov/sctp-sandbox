@@ -15,15 +15,25 @@ const int PROTO = IPPROTO_SCTP;
 const int CLIENT_SEND_COUNT = 5;
 const int SERVER_LISTEN_QUEUE_SIZE = 10;
 
-int enable_notifications(int fd)
+int set_notifications(int fd, int val)
 {
     struct sctp_event_subscribe events_subscr;
     memset(&events_subscr, 0, sizeof(events_subscr));
 
-    events_subscr.sctp_association_event = 1;
-    events_subscr.sctp_shutdown_event = 1;
+    events_subscr.sctp_association_event = val;
+    events_subscr.sctp_shutdown_event = val;
 
     return setsockopt(fd, IPPROTO_SCTP, SCTP_EVENTS, &events_subscr, sizeof(events_subscr));
+}
+
+int enable_notifications(int fd)
+{
+    return set_notifications(fd, 1);
+}
+
+int disable_notifications(int fd)
+{
+    return set_notifications(fd, 0);
 }
 
 void fill_addresses(struct sockaddr *addrs, int addr_count, char* text_buf, int text_buf_size)
