@@ -47,12 +47,13 @@ int main(int argc, char* argv[])
 
     printf("Connecting...\n");
 
-    if(connect(client_fd, (struct sockaddr*)&peer_addr, sizeof(peer_addr)) == -1) {
-        perror("connect");
+    sctp_assoc_t assoc_id = 0;
+    if(sctp_connectx(client_fd, (struct sockaddr*)&peer_addr, 1, &assoc_id) == -1) {
+        perror("sctp_connectx");
         return 6;
     }
 
-    printf("OK\n");
+    printf("OK. Association id is %d\n", assoc_id);
 
     char buf[1024];
     for(int i = 0; i < CLIENT_SEND_COUNT; ++i) {
