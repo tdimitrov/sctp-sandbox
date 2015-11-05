@@ -124,11 +124,13 @@ int handle_client(int server_fd, int assoc_id)
     *client_conn_fd = sctp_peeloff(server_fd, assoc_id);
     if(*client_conn_fd == -1) {
         printf("Error in peeloff\n");
+        free(client_conn_fd);
         return 2;
     }
 
     if(disable_notifications(*client_conn_fd) != 0) {
         printf("Error disabling notifications\n");
+        free(client_conn_fd);
         return 3;
     }
 
@@ -137,11 +139,13 @@ int handle_client(int server_fd, int assoc_id)
 
     if(pthread_attr_init(&thread_attr)) {
         printf("Error initialising thread attributes\n");
+        free(client_conn_fd);
         return 4;
     }
 
     if(pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_DETACHED)) {
         printf("Error setting detached attribute to thread\n");
+        free(client_conn_fd);
         return 5;
     }
 
@@ -150,6 +154,7 @@ int handle_client(int server_fd, int assoc_id)
 
     if(pthread_create(&new_thread, &thread_attr, &client_thread, (void*)client_conn_fd)) {
         printf("Error creating thread\n");
+        free(client_conn_fd);
         return 6;
     }
 
