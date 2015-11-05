@@ -1,5 +1,6 @@
 #include "common.h"
 #include <pthread.h>
+#include <errno.h>
 
 int get_connection(int server_fd);
 int handle_client(int server_fd, int assoc_id);
@@ -175,6 +176,11 @@ void* client_thread(void* client_conn_fd)
         int recv_size = recv(fd, buf, buf_size-1, 0);
 
         if(recv_size == -1) {
+            if(errno == ENOTCONN) {
+                printf("Client closed the connection\n");
+                return NULL;
+            }
+
             perror("recv()");
             return NULL;
         }
