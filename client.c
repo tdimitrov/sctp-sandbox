@@ -1,56 +1,110 @@
 #include "common.h"
+#include <getopt.h>
+
 
 int send_message(int server_fd, struct sockaddr_in *dest_addr, char* payload, int payload_len);
 int get_reply(int server_fd);
+void print_usage(const char *binary_name);
 
 int main(int argc, char* argv[])
 {
     int client_fd = 0;
-    const char* server_ip = NULL;
+    char* local_ipaddr_list = NULL;
+    char* remote_ipaddr_list = NULL;
     int server_port = SERVER_PORT;
+    struct sockaddr_in local_addrs[MAX_MULTIHOMING_ADDRESSES];
+    struct sockaddr_in remote_addrs[MAX_MULTIHOMING_ADDRESSES];
+    int remote_addr_count = 0;
+    int local_addr_count = 0;
 
-    if(argc == 3) {     //user provided IP and PORT
-        server_ip = argv[1];
-        server_port = atoi(argv[2]);
-        if(server_port < 1 || server_port > 65535) {
-            printf("Invalid port number (%d). Valid values are between 1 and 65535.\n", server_port);
-            return 1;
+     memset(local_addrs, sizeof(local_addrs), 0);
+     memset(remote_addrs, sizeof(remote_addrs), 0);
+
+    //for getopt:
+    // * : after parameter - this parameter has got a mandatory value (e.g. -p 80)
+    // * : in the beginning - return ':' if parameter value is missing
+
+    int c = 0;
+    while ((c = getopt (argc, argv, ":hr:l:p:")) != -1) {
+        switch (c) {
+            case 'h':
+                print_usage(argv[0]);
+            break;
+
+            case 'r':
+                remote_ipaddr_list = optarg;
+            break;
+
+            case 'l':
+                local_ipaddr_list = optarg;
+            break;
+
+            case 'p':
+                server_port = atoi(optarg);
+
+            break;
+
+            case ':':
+                printf("Missing parameter value for -%c\n", optopt);
+                return 1;
+            break;
+
+            case '?':
+                printf("Unknown option: -%c\n", optopt);
+                print_usage(argv[0]);
+                return 2;
+            break;
+
+            default:
+                printf("Unexpected error!\n");
+                return 3;
+            break;
         }
     }
-    else if(argc == 2) {    //user provided only IP
-        server_ip = argv[1];
+
+    if(validate_port_number(server_port)) {
+        return 4;
     }
-    else {    //user provided something wrong
-        printf("Usage: %s [SERVER IP ADDRESS] [SERVER PORT]\n", argv[0]);
-        return 2;
+
+    if(remote_ipaddr_list == NULL) {
+        printf("Provide at least one remote IP addresses with -r\n");
+        return 5;
+    }
+
+    if(parse_addresses(remote_ipaddr_list, strlen(remote_ipaddr_list), server_port, remote_addrs, MAX_MULTIHOMING_ADDRESSES, &remote_addr_count)) {
+        return 6;
+    }
+
+    if(local_ipaddr_list != NULL) {
+        if(parse_addresses(local_ipaddr_list, strlen(local_ipaddr_list), 0, local_addrs, MAX_MULTIHOMING_ADDRESSES, &local_addr_count)) {
+            return 7;
+        }
     }
 
     if((client_fd = socket(ADDR_FAMILY, SOCK_TYPE, PROTO)) == -1) {
         perror("socket");
-        return 3;
+        return 8;
+    }
+
+    if(local_ipaddr_list != NULL) {
+        if(sctp_bindx(client_fd, (struct sockaddr*)&local_addrs, local_addr_count, SCTP_BINDX_ADD_ADDR) == -1) {
+            perror("bind");
+            return 9;
+        }
     }
 
     //enable some notifications
     if(enable_notifications(client_fd) != 0) {
         printf("Error enabling notifications.\n");
-        return 4;
-    }
-
-    struct sockaddr_in peer_addr;
-    memset(&peer_addr, 0, sizeof(struct sockaddr_in));
-    peer_addr.sin_family = ADDR_FAMILY;
-    peer_addr.sin_port = htons(server_port);
-    if(inet_pton(AF_INET, server_ip, &(peer_addr.sin_addr)) != 1) {
-        printf("Error converting IP address (%s) to sockaddr_in structure\n", server_ip);
-        return 5;
+        return 10;
     }
 
     printf("Connecting...\n");
 
     sctp_assoc_t assoc_id = 0;
-    if(sctp_connectx(client_fd, (struct sockaddr*)&peer_addr, 1, &assoc_id) == -1) {
+    if(sctp_connectx(client_fd, (struct sockaddr*)&remote_addrs, remote_addr_count, &assoc_id) == -1) {
         perror("sctp_connectx");
-        return 6;
+        return 11;
     }
 
     printf("OK. Association id is %d\n", assoc_id);
@@ -62,12 +116,12 @@ int main(int argc, char* argv[])
         memset(buf, 0, sizeof(buf));
         snprintf(buf, sizeof(buf)-1, "DATA %d", i);
 
-        if(send_message(client_fd, &peer_addr, buf, strlen(buf))) {
-            return 1;
+        if(send_message(client_fd, &remote_addrs[0], buf, strlen(buf))) {
+            return 12;
         }
 
         if(get_reply(client_fd)) {
-            return 2;
+            return 13;
         }
 
         memset(buf, 0, sizeof(buf));
@@ -76,7 +130,7 @@ int main(int argc, char* argv[])
     printf("Closing...\n");
     if(close(client_fd) == -1) {
         perror("close");
-        return 8;
+        return 14;
     }
 
     return 0;
@@ -132,4 +186,15 @@ int get_reply(int server_fd)
     }
 
     return 0;
+}
+
+void print_usage(const char* binary_name)
+{
+    printf("SCTP client usage:\n"
+           "%s -r <remote IP addresses> -p <port> [-l <local IP addresses>]\n"
+           "Where:\n"
+           "- remote IP addresses - Semicolon separated list of peer's IP addresses, in single quotes, no tabs/spaces!\n"
+           "- port - Server's port to connect to\n"
+           "- local IP addresses - Semicolon separated list of local IP addresses to bind to, in single quotes, no tabs spaces\n",
+           binary_name);
 }

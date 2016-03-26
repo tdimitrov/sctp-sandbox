@@ -1,53 +1,100 @@
 #include "common.h"
 #include <pthread.h>
 
+#include <string.h>
+#include <getopt.h>
+
+
 int get_message(int server_fd, struct sockaddr_in *sender_addr);
 int send_reply(int server_fd, struct sockaddr_in* dest_addr);
-
+int parse_addresses(char* input, const int input_len, const int server_port, struct sockaddr_in *addresses, const int max_addr_count, int* count);
+int generate_default_addresses(struct sockaddr_in *bind_addrs, int* count, const int server_port);
+void print_usage(const char *binary_name);
 
 int main(int argc, char* argv[])
 {
     int server_fd = 0;
+    char* local_ipaddr_list = NULL;
     int server_port = SERVER_PORT;
+    int local_addr_count = 0;
+    struct sockaddr_in local_addrs[MAX_MULTIHOMING_ADDRESSES];
 
-    if(argc == 2) {
-        server_port = atoi(argv[1]);
-        if(server_port < 1 || server_port > 65535) {
-            printf("Invalid port number (%d). Valid values are between 1 and 65535.\n", server_port);
+    memset(local_addrs, sizeof(local_addrs), 0);
+
+    //for getopt:
+    // * : after parameter - this parameter has got a mandatory value (e.g. -p 80)
+    // * : in the beginning - return ':' if parameter value is missing
+
+    int c = 0;
+    while ((c = getopt (argc, argv, ":hr:l:p:")) != -1) {
+        switch (c) {
+            case 'h':
+                print_usage(argv[0]);
+            break;
+
+            case 'l':
+                local_ipaddr_list = optarg;
+            break;
+
+            case 'p':
+                server_port = atoi(optarg);
+
+            break;
+
+            case ':':
+                printf("Missing parameter value for -%c\n", optopt);
             return 1;
+            break;
+
+            case '?':
+                printf("Unknown option: -%c\n", optopt);
+                print_usage(argv[0]);
+            return 2;
+            break;
+
+            default:
+                printf("Unexpected error!\n");
+            return 3;
+            break;
+        }
+
+    }
+
+    if(validate_port_number(server_port)) {
+        return 4;
+    }
+
+    if(local_ipaddr_list != NULL) {
+        if(parse_addresses(local_ipaddr_list, strlen(local_ipaddr_list), server_port, local_addrs, MAX_MULTIHOMING_ADDRESSES, &local_addr_count)) {
+            return 5;
         }
     }
-    else if(argc != 1) { // argc can be two (port number passed) or one (no params passed)
-        printf("Usage: %s [PORT NUMBER TO BIND TO]\n", argv[0]);
-        return 2;
+    else {
+        if(generate_default_addresses(local_addrs, &local_addr_count, server_port)) {
+            return 6;
+        }
     }
 
     if((server_fd = socket(ADDR_FAMILY, SOCK_TYPE, PROTO)) == -1) {
         perror("socket");
-        return 3;
+        return 7;
     }
 
     //enable some notifications
     if(enable_notifications(server_fd) != 0) {
         printf("Error enabling notifications\n");
-        return 4;
+        return 8;
     }
 
 
-    struct sockaddr_in bind_addr;
-    memset(&bind_addr, 0, sizeof(struct sockaddr_in));
-    bind_addr.sin_family = ADDR_FAMILY;
-    bind_addr.sin_port = htons(server_port);
-    bind_addr.sin_addr.s_addr = INADDR_ANY;
-
-    if(sctp_bindx(server_fd, (struct sockaddr*)&bind_addr, 1, SCTP_BINDX_ADD_ADDR) == -1) {
+    if(sctp_bindx(server_fd, (struct sockaddr*)&local_addrs, local_addr_count, SCTP_BINDX_ADD_ADDR) == -1) {
         perror("bind");
-        return 5;
+        return 9;
     }
 
     if(listen(server_fd, SERVER_LISTEN_QUEUE_SIZE) != 0) {
         perror("listen");
-        return 6;
+        return 10;
     }
 
     printf("Listening on port %d\n", server_port);
@@ -66,7 +113,7 @@ int main(int argc, char* argv[])
         }
     }
 
-    return 7;
+    return 11;
 }
 
 int get_message(int server_fd, struct sockaddr_in* sender_addr)
@@ -123,4 +170,27 @@ int send_reply(int server_fd, struct sockaddr_in* dest_addr)
     }
 
     return 0;
+}
+
+int generate_default_addresses(struct sockaddr_in* bind_addrs, int* count, const int server_port)
+{
+    memset(bind_addrs, 0, sizeof(struct sockaddr_in));
+    bind_addrs->sin_family = ADDR_FAMILY;
+    bind_addrs->sin_port = htons(server_port);
+    bind_addrs->sin_addr.s_addr = INADDR_ANY;
+
+    *count = 1;
+
+    return 0;
+}
+
+
+void print_usage(const char* binary_name)
+{
+    printf("SCTP server usage:\n"
+           "%s -l <local IP addresses> -p <port> \n"
+           "Where:\n"
+           "- local IP addresses - Semicolon separated list of local IP addresses to bind to, in single quotes, no tabs/spaces!\n"
+           "- port - Server's port to connect to\n",
+           binary_name);
 }

@@ -14,6 +14,7 @@ const int SOCK_TYPE = SOCK_SEQPACKET;
 const int PROTO = IPPROTO_SCTP;
 const int CLIENT_SEND_COUNT = 5;
 const int SERVER_LISTEN_QUEUE_SIZE = 10;
+const int MAX_MULTIHOMING_ADDRESSES = 4;
 
 int enable_notifications(int fd)
 {
@@ -158,6 +159,52 @@ int handle_notification(union sctp_notification *notif, size_t notif_len, const 
         printf("Und notification type %d\n", notif->sn_header.sn_type);
         break;
     }
+
+    return 0;
+}
+
+int validate_port_number(int port_number)
+{
+    if(port_number < 1 || port_number > 65535) {
+        printf("Invalid port number (%d). Valid values are between 1 and 65535.\n", port_number);
+        return 1;
+    }
+
+    return 0;
+}
+
+int parse_addresses(char* input, const int input_len, const int port_number, struct sockaddr_in* addresses, const int max_addr_count, int* count)
+{
+    if(input[input_len] != '\0') {
+        printf("parse_addresses(): input is not NULL terminated!\n");
+        return 1;
+    }
+
+    char* input_addr[max_addr_count];
+    int input_addr_count = 0;
+
+
+    input_addr[0] = strtok(input, ";");
+
+    for(input_addr_count = 1; input_addr_count < max_addr_count; input_addr_count++) {
+        input_addr[input_addr_count] = strtok(NULL, ";");
+
+        if(input_addr[input_addr_count] == NULL)
+            break;
+    }
+
+    for(int i = 0; i < input_addr_count; i++) {
+        struct sockaddr_in* bind_addr = &addresses[i];
+        memset(bind_addr, 0, sizeof(struct sockaddr_in));
+        bind_addr->sin_family = ADDR_FAMILY;
+        bind_addr->sin_port = htons(port_number);
+        if(inet_pton(AF_INET, input_addr[i], &(bind_addr->sin_addr)) != 1) {
+            printf("parse_addresses(): Error converting IP address (%s) to sockaddr_in structure\n", input_addr[i]);
+            return 1;
+        }
+    }
+
+    *count = input_addr_count;
 
     return 0;
 }
