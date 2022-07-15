@@ -57,7 +57,7 @@ int main(int argc, char* argv[])
             return 6;
         }
 
-        memset(client_data, 0, sizeof(client_data));
+        memset(client_data, 0, sizeof(client_data_t));
         unsigned int client_addr_len = sizeof(client_data->addr);
 
         if((client_data->socket_fd = accept(server_fd, &(client_data->addr), &client_addr_len)) == -1) {
